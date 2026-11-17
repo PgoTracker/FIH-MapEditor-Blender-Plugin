@@ -1,0 +1,12 @@
+schema_version = "1.0.0"
+id = "fih_map_exporter"
+version = "0.2.8"
+name = "Flipping Is Hard Map Exporter"
+tagline = "Package scene geometry, textures and scripts for FIH maps"
+maintainer = "FIH Map Editor contributors"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX: MIT"]
+
+[permissions]
+files = "Read C# scripts and textures and write map packages"
