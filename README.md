@@ -4,7 +4,7 @@ Blender add-on for creating `.fihmap.zip` packages for [FIH Map Editor](https://
 
 ## Install
 
-In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu → Install from Disk** and select [`fih_map_exporter-0.2.8.zip`](dist/fih_map_exporter-0.2.8.zip). Enable the add-on if prompted. In the 3D Viewport, press **N** and open the **FIH Map** tab.
+In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu → Install from Disk** and select [`fih_map_exporter-0.2.11.zip`](dist/fih_map_exporter-0.2.11.zip). Enable the add-on if prompted. In the 3D Viewport, press **N** and open the **FIH Map** tab.
 
 ## Build a map
 
@@ -20,11 +20,13 @@ In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu
 
 ## Spawn, goal, and checkpoints
 
-Add Blender **Empties** or mesh objects named `Spawn`, `Goal`, and `Checkpoint`. Additional checkpoints can be named `Checkpoint.001`, `Checkpoint.002`, and so on. These are map markers, so their meshes are not included as visible custom geometry. A map can have one Spawn, one Goal, and any number of checkpoints. Names are case-insensitive. **Selected Meshes Only** also filters markers by selection.
+Use the **Map Markers** panel in the FIH Map tab, or **Add → FIH Map Markers**, to add a Spawn, Goal, or Checkpoint at the 3D cursor. These are textured mesh guides: blue Spawn, green Goal, and orange Checkpoint. Their labels identify the type, and the large arrow points along local **-Y**. Use Material Preview or Rendered view to see the textures; object names and colors also appear in Solid view. The three PNG textures are bundled inside the installed add-on and referenced by the `.blend`, not packed into it. Keep the add-on installed when editing that `.blend` on another computer. Markers are not exported as playable map geometry. Opening an older `.blend` with this version relinks the add-on's marker materials and fixes their UVs automatically.
+
+You can also create your own Blender Empties or meshes named `Spawn`, `Goal`, and `Checkpoint`. Additional checkpoints can be named `Checkpoint.001`, `Checkpoint.002`, and so on. A map can have one Spawn, one Goal, and any number of checkpoints. Names are case-insensitive. **Selected Meshes Only** also filters markers by selection.
 
 - **Spawn:** its origin becomes `Spawn.Pos`. Rotate it around Blender Z to set `Spawn.Yaw`. Local **-Y** points in the player's forward direction; an unrotated marker has yaw 0.
 - **Goal:** its center and dimensions become `Goal.Center` and `Goal.Size`. A mesh marker uses its evaluated bounding box, including modifiers and object scale. An Empty starts as a 4 × 4 × 4 goal box; its object scale changes that size. Rotation becomes `Goal.Rot`, or `null` when unrotated.
-- **Checkpoint:** its origin becomes `Pos`, and its Z rotation sets respawn `Yaw`. An Empty starts with radius 1.5; set **Checkpoint Radius** on the active marker or scale the Empty to change it. A mesh marker uses half its largest evaluated dimension as radius. Each checkpoint gets a stable `Uid` based on map name and marker name. Checkpoints export as spherical triggers (`Size` and `Rot` are `null`).
+- **Checkpoint:** its origin becomes `Pos`, and its Z rotation sets respawn `Yaw`. The provided orange marker is 3 units across, giving radius 1.5; scale it to change the radius. An Empty starts with radius 1.5; set **Checkpoint Radius** on the active Empty marker or scale it to change it. A mesh marker uses half its largest evaluated dimension as radius. Each checkpoint gets a stable `Uid` based on map name and marker name. Checkpoints export as spherical triggers (`Size` and `Rot` are `null`).
 
 All marker positions and rotations use the same Blender Z-up to game Y-up conversion as custom geometry. Markers are only exported into the map package; the Blender scene is unchanged.
 

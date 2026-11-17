@@ -3,7 +3,7 @@
 bl_info = {
     "name": "Flipping Is Hard Map Exporter",
     "author": "FIH Map Editor contributors",
-    "version": (0, 2, 8),
+    "version": (0, 2, 11),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > FIH Map",
     "description": "Export scene meshes, matching textures and C# as .fihmap.zip",
@@ -17,14 +17,16 @@ import uuid
 
 import bpy
 import bmesh
-from bpy.props import BoolProperty, FloatProperty, StringProperty
-from bpy.types import Operator, Panel
+from bpy.app.handlers import persistent
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.types import Menu, Operator, Panel
 from bpy_extras.io_utils import axis_conversion
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
 from .package import ExportError, asset_name, write_package
+from .markers import create_marker, refresh_marker_assets
 
 
 AXIS = axis_conversion(from_forward="Y", from_up="Z", to_forward="-Z", to_up="Y").to_4x4()
@@ -398,6 +400,42 @@ class FIH_OT_export(Operator):
         return {"FINISHED"}
 
 
+class FIH_OT_add_marker(Operator):
+    bl_idname = "fih.add_map_marker"
+    bl_label = "Add Map Marker"
+    bl_description = "Add a textured marker that exports as map metadata"
+    bl_options = {"REGISTER", "UNDO"}
+
+    kind: EnumProperty(items=[
+        ("Spawn", "Spawn", "Player start position and facing"),
+        ("Goal", "Goal", "Goal trigger box"),
+        ("Checkpoint", "Checkpoint", "Checkpoint position and facing"),
+    ])
+
+    def execute(self, context):
+        try:
+            marker = create_marker(context, self.kind)
+        except ValueError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Added {marker.name}; arrow points toward player forward")
+        return {"FINISHED"}
+
+
+class FIH_MT_add_markers(Menu):
+    bl_idname = "FIH_MT_add_markers"
+    bl_label = "FIH Map Markers"
+
+    def draw(self, context):
+        for kind, icon in (("Spawn", "PLAY"), ("Goal", "EVENT_G"), ("Checkpoint", "EVENT_C")):
+            action = self.layout.operator(FIH_OT_add_marker.bl_idname, text=kind, icon=icon)
+            action.kind = kind
+
+
+def _draw_add_menu(self, context):
+    self.layout.menu(FIH_MT_add_markers.bl_idname, icon="EMPTY_AXIS")
+
+
 class FIH_PT_export(Panel):
     bl_label = "FIH Map"
     bl_idname = "FIH_PT_export"
@@ -413,20 +451,51 @@ class FIH_PT_export(Panel):
         layout.prop(scene, "fih_selected_only")
         layout.prop(scene, "fih_blank_world")
         layout.prop(scene, "fih_repair_open")
-        if context.active_object and context.active_object.name.lower().startswith("checkpoint"):
-            layout.prop(context.active_object, "fih_checkpoint_radius")
-        if context.active_object and context.active_object.type == "MESH":
+        if context.active_object and context.active_object.type == "MESH" and not context.active_object.get("fih_marker_kind"):
             layout.prop(context.active_object, "fih_turn_for_game")
         layout.prop(scene, "fih_scripts_dir")
         layout.operator(FIH_OT_export.bl_idname, icon="EXPORT")
 
 
-CLASSES = (FIH_OT_export, FIH_PT_export)
+class FIH_PT_markers(Panel):
+    bl_label = "Map Markers"
+    bl_idname = "FIH_PT_markers"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FIH Map"
+
+    def draw(self, context):
+        layout = self.layout
+        for kind, icon in (("Spawn", "PLAY"), ("Goal", "EVENT_G"), ("Checkpoint", "EVENT_C")):
+            action = layout.operator(FIH_OT_add_marker.bl_idname, text=f"Add {kind}", icon=icon)
+            action.kind = kind
+        obj = context.active_object
+        if obj and obj.get("fih_marker_kind"):
+            layout.separator()
+            layout.label(text=f"Selected: {obj.name}")
+            if obj.name.casefold().startswith("checkpoint") and obj.type == "EMPTY":
+                layout.prop(obj, "fih_checkpoint_radius")
+            if obj.name.casefold().startswith(("spawn", "checkpoint")):
+                layout.label(text="Arrow / local -Y = player forward")
+        layout.label(text="View textures in Material Preview")
+
+
+CLASSES = (FIH_OT_export, FIH_OT_add_marker, FIH_MT_add_markers, FIH_PT_export, FIH_PT_markers)
+
+
+@persistent
+def _refresh_markers_on_load(_):
+    # Blender exposes _RestrictData while enabling extensions at startup.
+    # The load_post handler runs after real scene data becomes available.
+    if not hasattr(bpy.data, "materials"):
+        return
+    try:
+        refresh_marker_assets()
+    except Exception as exc:
+        print(f"FIH Map Exporter: marker preview refresh failed: {exc}")
 
 
 def register():
-    for cls in CLASSES:
-        bpy.utils.register_class(cls)
     bpy.types.Scene.fih_map_name = StringProperty(name="Map Name", default="Blender Map")
     bpy.types.Scene.fih_output_path = StringProperty(name="Package", subtype="FILE_PATH", default="//BlenderMap.fihmap.zip")
     bpy.types.Scene.fih_selected_only = BoolProperty(name="Selected Meshes Only", default=False)
@@ -442,13 +511,29 @@ def register():
         name="Checkpoint Radius", default=1.5, min=0.01,
         description="Radius for an Empty checkpoint; object scale also applies")
     bpy.types.Scene.fih_scripts_dir = StringProperty(name="C# Scripts Folder", subtype="DIR_PATH", default="")
+    for cls in CLASSES:
+        bpy.utils.register_class(cls)
+    bpy.types.VIEW3D_MT_add.append(_draw_add_menu)
+    bpy.app.handlers.load_post.append(_refresh_markers_on_load)
+    _refresh_markers_on_load(None)
 
 
 def unregister():
-    del bpy.types.Object.fih_turn_for_game
-    del bpy.types.Object.fih_checkpoint_radius
+    if _refresh_markers_on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_refresh_markers_on_load)
+    try:
+        bpy.types.VIEW3D_MT_add.remove(_draw_add_menu)
+    except ValueError:
+        pass
+    for key in ("fih_turn_for_game", "fih_checkpoint_radius"):
+        if hasattr(bpy.types.Object, key):
+            delattr(bpy.types.Object, key)
     for key in ("fih_map_name", "fih_output_path", "fih_selected_only", "fih_repair_open",
                 "fih_scripts_dir", "fih_blank_world"):
-        delattr(bpy.types.Scene, key)
+        if hasattr(bpy.types.Scene, key):
+            delattr(bpy.types.Scene, key)
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
