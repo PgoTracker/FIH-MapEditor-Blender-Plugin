@@ -45,7 +45,7 @@ try:
             data = json.loads(archive.read("map.fihmap.json"))
             assert archive.namelist() == ["map.fihmap.json", "geometry/Platform.obj"]
             assert len(data["Objects"]) == 1
-            assert data["Spawn"] == {"Pos": [0, 0, 0], "Yaw": 0}, data
+            assert data["Spawn"] == {"Pos": [0, 0, 0], "Yaw": 180}, data
             assert data["Goal"] == {"Center": [0, 0, 0], "Size": [4, 4, 4], "Rot": None}, data
             assert [checkpoint["Radius"] for checkpoint in data["Checkpoints"]] == [1.5, 1.5]
         if os.environ.get("FIH_MARKER_BLEND"):

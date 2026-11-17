@@ -64,21 +64,35 @@ try:
             assert set(archive.namelist()) == {"map.fihmap.json", "geometry/Spinner.obj", "textures/Spinner.png", "scripts/Spinner.cs"}
             data = json.loads(archive.read("map.fihmap.json"))
             assert len(data["Objects"]) == 2
-            assert data["Objects"][0]["Pos"] == [2, 4, -3], data
-            assert data["Objects"][1]["Pos"] == [6, 8, -7], data
+            assert data["Objects"][0]["Pos"] == [2, 4, 3], data
+            assert data["Objects"][1]["Pos"] == [6, 8, 7], data
             assert data["BaseMode"] == "Blank", data
-            assert data["Spawn"] == {"Pos": [1, 3, -2], "Yaw": 90}, data
-            assert data["Goal"]["Center"] == [4, 6, -5], data
+            assert data["Spawn"] == {"Pos": [1, 3, 2], "Yaw": 90}, data
+            assert data["Goal"]["Center"] == [4, 6, 5], data
             assert data["Goal"]["Size"] == [2, 6, 4], data
-            assert all(abs(a - b) < 0.001 for a, b in zip(data["Goal"]["Rot"], [0, 90, 0])), data
+            assert all(abs(a - b) < 0.001 for a, b in zip(data["Goal"]["Rot"], [0, -90, 0])), data
             assert len(data["Checkpoints"]) == 2, data
-            assert data["Checkpoints"][0]["Pos"] == [3, 5, -4], data
+            assert data["Checkpoints"][0]["Pos"] == [3, 5, 4], data
             assert data["Checkpoints"][0]["Radius"] == 3, data
-            assert data["Checkpoints"][1]["Pos"] == [7, 9, -8], data
+            assert data["Checkpoints"][0]["Yaw"] == 180, data
+            assert data["Checkpoints"][1]["Pos"] == [7, 9, 8], data
             assert data["Checkpoints"][1]["Radius"] == 1.5, data
             assert data["Checkpoints"][1]["Uid"] != data["Checkpoints"][0]["Uid"]
             uid = data["Checkpoints"][0]["Uid"]
-            assert b"vt " in archive.read("geometry/Spinner.obj")
+            obj_lines = archive.read("geometry/Spinner.obj").decode("ascii").splitlines()
+            assert any(line.startswith("vt ") for line in obj_lines)
+            vertices = [tuple(map(float, line.split()[1:])) for line in obj_lines if line.startswith("v ")]
+            normals = [tuple(map(float, line.split()[1:])) for line in obj_lines if line.startswith("vn ")]
+            corners = next(line.split()[1:] for line in obj_lines if line.startswith("f "))
+            indices = [tuple(int(value) for value in corner.split("/")) for corner in corners]
+            a, b, c = [vertices[index[0] - 1] for index in indices]
+            ab = [b[i] - a[i] for i in range(3)]
+            ac = [c[i] - a[i] for i in range(3)]
+            face_normal = (ab[1] * ac[2] - ab[2] * ac[1],
+                           ab[2] * ac[0] - ab[0] * ac[2],
+                           ab[0] * ac[1] - ab[1] * ac[0])
+            normal = normals[indices[0][2] - 1]
+            assert sum(face_normal[i] * normal[i] for i in range(3)) > 0
             assert archive.read("textures/Spinner.png")[:8] == b"\x89PNG\r\n\x1a\n"
             print("FIH_INTEGRATION_PASS", archive.namelist())
         if os.environ.get("FIH_TEST_PACKAGE"):

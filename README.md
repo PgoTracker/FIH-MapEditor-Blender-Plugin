@@ -4,7 +4,7 @@ Blender add-on for creating `.fihmap.zip` packages for [FIH Map Editor](https://
 
 ## Install
 
-In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu → Install from Disk** and select [`fih_map_exporter-0.2.11.zip`](dist/fih_map_exporter-0.2.11.zip). Enable the add-on if prompted. In the 3D Viewport, press **N** and open the **FIH Map** tab.
+In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu → Install from Disk** and select [`fih_map_exporter-0.2.13.zip`](dist/fih_map_exporter-0.2.13.zip). Enable the add-on if prompted. In the 3D Viewport, press **N** and open the **FIH Map** tab.
 
 ## Build a map
 
@@ -14,7 +14,7 @@ In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu
 4. Set **Map Name** and **Package** in the FIH Map panel, then click **Export Map Package**. The package contains one OBJ, optional PNG and optional C# file per unique asset, plus a map JSON with one placement per mesh object.
 5. Copy the `.fihmap.zip` to `BepInEx/plugins/FIHMapEditor/Maps/`, refresh Local Maps, and load it. Enable map C# separately in the game's Local Maps screen if you trust the script.
 
-**Selected Meshes Only** lets you export part of a scene. The exporter includes evaluated modifiers and object position, rotation and scale. Blender's Z-up coordinates are converted to the game's Y-up coordinates. Apply mirror or sheared transforms before export.
+**Selected Meshes Only** lets you export part of a scene. The exporter includes evaluated modifiers and object position, rotation and scale. Coordinates map from Blender `(X, Y, Z)` to game `(X, Z, Y)`, keeping objects on the same side when viewed from the same end. The exporter reverses OBJ face winding to keep outward surfaces visible after this axis conversion. Apply object-level mirror or sheared transforms before export.
 
 **Blank Game World** is checked by default. It writes `"BaseMode": "Blank"`, which hides the game's existing level while the map is active. Uncheck it to write `"BaseMode": "Overlay"` and keep the existing level visible.
 
@@ -30,7 +30,7 @@ You can also create your own Blender Empties or meshes named `Spawn`, `Goal`, an
 
 All marker positions and rotations use the same Blender Z-up to game Y-up conversion as custom geometry. Markers are only exported into the map package; the Blender scene is unchanged.
 
-The axis conversion rotates the whole Blender scene consistently; it cannot infer which side of a mesh the player will approach. For text or another mesh that should face the opposite side in game, select the object and enable **Turn Around in Game**. The exporter turns that placement 180° around Blender's vertical axis about its evaluated mesh center. The Blender object and exported OBJ asset geometry stay unchanged. Each instance can use this setting independently.
+Older `.blend` files may still store a **Turn Around in Game** value from previous versions. The exporter ignores it; all mesh placements now use the same axis conversion.
 
 Open meshes export without an opt-in or topology check that blocks the package. **Repair Matching Gaps** is optional and off by default. If enabled, the exporter bridges exactly two matching open edge loops with no existing surface between them in a temporary copy before writing the OBJ. The Blender file stays unchanged, and `Cube`/`Cube.001` still become two placements of one asset. If the loops do not match, their open geometry exports as-is. The repair is geometric; inspect UVs on newly bridged faces if the mesh uses a texture.
 

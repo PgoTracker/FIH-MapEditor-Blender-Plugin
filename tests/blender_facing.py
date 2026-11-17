@@ -1,4 +1,4 @@
-"""Turning one placement for the game preserves the asset and its center."""
+"""Legacy per-object turn flags do not alter exported placements."""
 
 import json
 import os
@@ -38,14 +38,12 @@ with tempfile.TemporaryDirectory() as folder:
     path = os.path.join(folder, "facing.fihmap.zip")
     export_scene(bpy.context.scene, path, "Before")
     before, geometry_before = read(path)
-    text.fih_turn_for_game = True
+    text["fih_turn_for_game"] = True
     export_scene(bpy.context.scene, path, "After")
     after, geometry_after = read(path)
     assert geometry_before == geometry_after
-    first, second = after["Objects"]
-    assert first["Pos"] == [4.0, 0.0, -0.2], first
-    assert abs(abs(first["Rot"][1]) - 180) < 0.001, first
-    assert second == before["Objects"][1]
+    assert after["Objects"] == before["Objects"]
+    assert not hasattr(bpy.types.Object, "fih_turn_for_game")
     assert text.matrix_world.translation[:] == (0.0, 0.0, 0.0)
-    print("FIH_FACING_PASS")
+    print("FIH_LEGACY_TURN_IGNORED_PASS")
 unregister()

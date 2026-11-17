@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "fih_map_exporter"
-version = "0.2.11"
+version = "0.2.13"
 name = "Flipping Is Hard Map Exporter"
 tagline = "Package scene geometry, textures and scripts for FIH maps"
 maintainer = "FIH Map Editor contributors"

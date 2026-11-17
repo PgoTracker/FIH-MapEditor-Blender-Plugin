@@ -3,7 +3,7 @@
 bl_info = {
     "name": "Flipping Is Hard Map Exporter",
     "author": "FIH Map Editor contributors",
-    "version": (0, 2, 11),
+    "version": (0, 2, 13),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > FIH Map",
     "description": "Export scene meshes, matching textures and C# as .fihmap.zip",
@@ -20,7 +20,6 @@ import bmesh
 from bpy.app.handlers import persistent
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from bpy.types import Menu, Operator, Panel
-from bpy_extras.io_utils import axis_conversion
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
@@ -29,30 +28,23 @@ from .package import ExportError, asset_name, write_package
 from .markers import create_marker, refresh_marker_assets
 
 
-AXIS = axis_conversion(from_forward="Y", from_up="Z", to_forward="-Z", to_up="Y").to_4x4()
+# Blender is Z-up; the game's map is Y-up. Keeping both Blender X and Y
+# positive in the corresponding horizontal game axes requires a reflection.
+# Conjugating object transforms remains a proper rotation; reflected OBJ
+# triangles need their winding reversed below.
+AXIS = Matrix(((1.0, 0.0, 0.0, 0.0),
+               (0.0, 0.0, 1.0, 0.0),
+               (0.0, 1.0, 0.0, 0.0),
+               (0.0, 0.0, 0.0, 1.0)))
 AXIS_INV = AXIS.inverted()
-
-
-def _export_world_matrix(obj, depsgraph):
-    world = obj.matrix_world.copy()
-    if not getattr(obj, "fih_turn_for_game", False):
-        return world
-    evaluated = obj.evaluated_get(depsgraph)
-    corners = [Vector(corner) for corner in evaluated.bound_box]
-    local_center = sum(corners, Vector((0.0, 0.0, 0.0))) / len(corners)
-    world_center = world @ local_center
-    turn = (Matrix.Translation(world_center)
-            @ Matrix.Rotation(math.pi, 4, "Z")
-            @ Matrix.Translation(-world_center))
-    return turn @ world
 
 
 def _vec(values):
     return [round(float(value), 6) for value in values]
 
 
-def _converted_transform(obj, depsgraph):
-    converted = AXIS @ _export_world_matrix(obj, depsgraph) @ AXIS_INV
+def _converted_transform(obj):
+    converted = AXIS @ obj.matrix_world @ AXIS_INV
     position, rotation, scale = converted.decompose()
     if min(scale) <= 0:
         raise ExportError(f"{obj.name}: apply mirror or negative scale before export")
@@ -64,8 +56,9 @@ def _converted_transform(obj, depsgraph):
 
 
 def _yaw(rotation):
-    # Blender local -Y is game +Z, the player's zero-yaw forward direction.
-    forward = rotation @ Vector((0.0, 0.0, 1.0))
+    # The marker arrow points along Blender local -Y. Use that exact direction
+    # after axis conversion, including the reflected game Z axis.
+    forward = rotation @ (AXIS.to_3x3() @ Vector((0.0, -1.0, 0.0)))
     return round(math.degrees(math.atan2(forward.x, forward.z)) % 360.0, 6)
 
 
@@ -83,7 +76,7 @@ def _marker_bounds(obj, depsgraph, scale):
 
 
 def _marker_data(obj, kind, map_name, depsgraph):
-    converted, position, rotation, scale = _converted_transform(obj, depsgraph)
+    converted, position, rotation, scale = _converted_transform(obj)
     if kind == "Spawn":
         return {"Pos": _vec(position), "Yaw": _yaw(rotation)}
     if kind == "Goal":
@@ -248,7 +241,7 @@ def _obj_bytes(obj, depsgraph, require_uv=False, repair_open=False, repairs=None
                 vertex_index = mesh.loops[loop_index].vertex_index + 1
                 tokens.append(f"{vertex_index}/{corner}/{corner}" if uv else f"{vertex_index}//{corner}")
                 corner += 1
-            lines.append("f " + " ".join(tokens) + "\n")
+            lines.append("f " + " ".join((tokens[0], tokens[2], tokens[1])) + "\n")
         return "".join(lines).encode("ascii")
     finally:
         evaluated.to_mesh_clear()
@@ -360,7 +353,7 @@ def export_scene(scene, filepath, map_name, selected_only=False, scripts_dir="",
         else:
             canonical = name
             assets[key] = (name, {"obj": geometry, "png": texture, "cs": _script_bytes(name, scripts_dir)})
-        _, position, rotation, scale = _converted_transform(obj, depsgraph)
+        _, position, rotation, scale = _converted_transform(obj)
         # Unity Quaternion.Euler(x,y,z) uses the YXZ rotation order.
         angles = rotation.to_euler("YXZ")
         objects.append({
@@ -451,8 +444,6 @@ class FIH_PT_export(Panel):
         layout.prop(scene, "fih_selected_only")
         layout.prop(scene, "fih_blank_world")
         layout.prop(scene, "fih_repair_open")
-        if context.active_object and context.active_object.type == "MESH" and not context.active_object.get("fih_marker_kind"):
-            layout.prop(context.active_object, "fih_turn_for_game")
         layout.prop(scene, "fih_scripts_dir")
         layout.operator(FIH_OT_export.bl_idname, icon="EXPORT")
 
@@ -504,9 +495,6 @@ def register():
         description="Hide the game's built-in level and show only this map's objects")
     bpy.types.Scene.fih_repair_open = BoolProperty(name="Repair Matching Gaps", default=False,
                                                   description="Bridge two matching open edge loops in the export copy")
-    bpy.types.Object.fih_turn_for_game = BoolProperty(
-        name="Turn Around in Game", default=False,
-        description="Turn this placement 180 degrees around Blender's vertical axis about its center in the exported map")
     bpy.types.Object.fih_checkpoint_radius = FloatProperty(
         name="Checkpoint Radius", default=1.5, min=0.01,
         description="Radius for an Empty checkpoint; object scale also applies")
@@ -525,7 +513,7 @@ def unregister():
         bpy.types.VIEW3D_MT_add.remove(_draw_add_menu)
     except ValueError:
         pass
-    for key in ("fih_turn_for_game", "fih_checkpoint_radius"):
+    for key in ("fih_checkpoint_radius",):
         if hasattr(bpy.types.Object, key):
             delattr(bpy.types.Object, key)
     for key in ("fih_map_name", "fih_output_path", "fih_selected_only", "fih_repair_open",
