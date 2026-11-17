@@ -3,7 +3,7 @@
 bl_info = {
     "name": "Flipping Is Hard Map Exporter",
     "author": "FIH Map Editor contributors",
-    "version": (0, 2, 13),
+    "version": (0, 2, 15),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > FIH Map",
     "description": "Export scene meshes, matching textures and C# as .fihmap.zip",
@@ -337,11 +337,11 @@ def export_scene(scene, filepath, map_name, selected_only=False, scripts_dir="",
     objects = []
     for obj in meshes:
         name = asset_name(obj.name)
-        image = _texture_image(obj)
-        geometry = _obj_bytes(obj, depsgraph, require_uv=image is not None,
-                              repair_open=repair_open, repairs=repairs)
-        texture = _png_bytes(image, scene) if image else None
         key = name.lower()
+        image = _texture_image(obj)
+        texture = _png_bytes(image, scene) if image else None
+        geometry = _obj_bytes(obj, depsgraph, require_uv=texture is not None,
+                              repair_open=repair_open, repairs=repairs)
         if key in assets:
             previous = assets[key]
             if previous[1]["obj"] != geometry or previous[1]["png"] != texture:

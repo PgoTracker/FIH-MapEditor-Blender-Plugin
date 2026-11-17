@@ -4,12 +4,12 @@ Blender add-on for creating `.fihmap.zip` packages for [FIH Map Editor](https://
 
 ## Install
 
-In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu → Install from Disk** and select [`fih_map_exporter-0.2.13.zip`](dist/fih_map_exporter-0.2.13.zip). Enable the add-on if prompted. In the 3D Viewport, press **N** and open the **FIH Map** tab.
+In Blender 4.2 or newer, open **Edit → Preferences → Get Extensions → menu → Install from Disk** and select [`fih_map_exporter-0.2.15.zip`](dist/fih_map_exporter-0.2.15.zip). Enable the add-on if prompted. In the 3D Viewport, press **N** and open the **FIH Map** tab.
 
 ## Build a map
 
 1. Give every mesh object an asset name, such as `Spinner`. Blender duplicates named `Spinner.001`, `Spinner.002`, etc. become additional placements of the same asset. Their local meshes and texture must match. Give genuinely different meshes different names.
-2. Set one image texture as the **Principled BSDF → Base Color** input and UV unwrap the mesh. The exporter converts the image to a compatible RGBA PNG. The current map format supports one texture per asset; bake multiple materials to one atlas first. Untextured meshes are allowed.
+2. UV unwrap any mesh that needs a texture. In its Blender material, connect one **Image Texture** directly to **Principled BSDF → Base Color**. The exporter converts the image to `textures/<asset name>.png` in the package, shared by numbered instances. To export an object without a texture, unlink the image from Base Color or use a plain material. The map format supports one texture per asset; bake multiple materials to one atlas first.
 3. Optionally create a Blender Text block named `Spinner.cs`, or place `Spinner.cs` in the **C# Scripts Folder**. The C# class should also be named `Spinner` and implement `IPackagedGeometryBehavior` as described in the editor repository's `PACKAGED_GEOMETRY.md`.
 4. Set **Map Name** and **Package** in the FIH Map panel, then click **Export Map Package**. The package contains one OBJ, optional PNG and optional C# file per unique asset, plus a map JSON with one placement per mesh object.
 5. Copy the `.fihmap.zip` to `BepInEx/plugins/FIHMapEditor/Maps/`, refresh Local Maps, and load it. Enable map C# separately in the game's Local Maps screen if you trust the script.
