@@ -7,12 +7,13 @@ import tempfile
 import zipfile
 
 
-FORMAT_VERSION = 14
+FORMAT_VERSION = 15
 NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,79}\Z")
 MAX_ASSETS = 100
 MAX_OBJ = 8 * 1024 * 1024
 MAX_SCRIPT = 256 * 1024
 MAX_PNG = 8 * 1024 * 1024
+MAX_SOUND = 4 * 1024 * 1024
 MAX_PACKAGE = 64 * 1024 * 1024
 
 
@@ -44,6 +45,15 @@ def validate_png(data, name):
         raise ExportError(f"{name}: texture must be non-interlaced 8-bit RGB or RGBA PNG")
 
 
+def validate_sound(data, extension, name):
+    if not isinstance(data, bytes) or not (12 <= len(data) <= MAX_SOUND):
+        raise ExportError(f"{name}: impact sound must be 12 bytes to 4 MB")
+    wav = extension == ".wav" and data[:4] == b"RIFF" and data[8:12] == b"WAVE"
+    ogg = extension == ".ogg" and data[:4] == b"OggS"
+    if not (wav or ogg):
+        raise ExportError(f"{name}: impact sound must be WAV or Ogg")
+
+
 def write_package(path, map_name, objects, assets, *, base_mode="Overlay", spawn=None,
                   goal=None, checkpoints=None):
     """assets maps names to dicts with obj bytes and optional png/cs bytes."""
@@ -60,6 +70,8 @@ def write_package(path, map_name, objects, assets, *, base_mode="Overlay", spawn
         obj = files.get("obj")
         png = files.get("png")
         script = files.get("cs")
+        sound = files.get("sound")
+        sound_ext = files.get("sound_ext")
         if not isinstance(obj, bytes) or not obj or len(obj) > MAX_OBJ:
             raise ExportError(f"{name}: OBJ must be 1 byte to 8 MB")
         entries.append((f"geometry/{name}.obj", obj))
@@ -74,6 +86,9 @@ def write_package(path, map_name, objects, assets, *, base_mode="Overlay", spawn
             except UnicodeDecodeError as exc:
                 raise ExportError(f"{name}: C# file must be UTF-8") from exc
             entries.append((f"scripts/{name}.cs", script))
+        if sound is not None:
+            validate_sound(sound, sound_ext, name)
+            entries.append((f"sounds/{name}{sound_ext}", sound))
     for item in objects:
         source = item.get("Source", "")
         if not source.startswith("package://") or source[10:].lower() not in seen:

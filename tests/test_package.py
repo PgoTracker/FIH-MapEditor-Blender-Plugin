@@ -26,7 +26,22 @@ class PackageTests(unittest.TestCase):
             package.write_package(path, "Test", [object_data], {"Spinner": {"obj": b"v 0 0 0\n", "cs": b"class Spinner {}", "png": None}})
             with zipfile.ZipFile(path) as archive:
                 self.assertEqual(set(archive.namelist()), {"map.fihmap.json", "geometry/Spinner.obj", "scripts/Spinner.cs"})
-                self.assertEqual(json.loads(archive.read("map.fihmap.json"))["FormatVersion"], 14)
+                self.assertEqual(json.loads(archive.read("map.fihmap.json"))["FormatVersion"], 15)
+
+    def test_matching_impact_sound(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = str(Path(folder) / "impact.fihmap.zip")
+            object_data = {"Source": "package://Suzanne", "SourceName": "Suzanne", "Pos": [0, 0, 0], "Rot": [0, 0, 0], "Scale": [1, 1, 1]}
+            audio = b"RIFF----WAVEfmt "
+            package.write_package(path, "Impact", [object_data], {
+                "Suzanne": {"obj": b"v 0 0 0\n", "sound": audio, "sound_ext": ".wav"}
+            })
+            with zipfile.ZipFile(path) as archive:
+                self.assertEqual(archive.read("sounds/Suzanne.wav"), audio)
+            with self.assertRaises(package.ExportError):
+                package.write_package(path, "Impact", [object_data], {
+                    "Suzanne": {"obj": b"v 0 0 0\n", "sound": b"invalid audio", "sound_ext": ".wav"}
+                })
 
 
 if __name__ == "__main__":

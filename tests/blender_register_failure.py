@@ -20,10 +20,14 @@ addon.register()
 try:
     scene = bpy.context.scene
     for name in ("fih_map_name", "fih_output_path", "fih_selected_only", "fih_blank_world",
-                 "fih_repair_open", "fih_scripts_dir"):
+                 "fih_repair_open"):
         assert hasattr(scene, name), name
+    assert not hasattr(scene, "fih_scripts_dir")
+    assert not hasattr(scene, "fih_impact_sounds_dir")
     bpy.ops.mesh.primitive_cube_add()
     bpy.context.object.name = "Platform"
+    assert hasattr(bpy.context.object, "fih_script_path")
+    assert hasattr(bpy.context.object, "fih_impact_sound_path")
     with tempfile.TemporaryDirectory() as folder:
         path = os.path.join(folder, "works.fihmap.zip")
         scene.fih_output_path = path

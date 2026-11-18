@@ -5,7 +5,16 @@ public class Platform : IPackagedGeometryBehavior
 {
     private bool _carrying;
 
-    public void OnSpawn(PackagedGeometryContext context) { }
+     public void OnSpawn(PackagedGeometryContext context)
+    {
+        context.SetGroundSurface(PackagedGroundSurface.HardMetal);
+        context.SetColliderPhysics(staticFriction: 99f, dynamicFriction: 99f,
+                                   bounciness: 0.05f);
+        if (!context.EnablePackagedImpactSound(minImpulse: 0.5f, cooldown: 0.2f,
+                                               volume: 0.6f))
+            Debug.LogWarning("[PACKAGE] Spinner's matching impact sound is missing.");
+        Debug.Log("[PACKAGE] Spinner ground: HardMetal; physics and packaged impact enabled.");
+    }
 
     public void Update(PackagedGeometryContext context, float deltaTime)
     {

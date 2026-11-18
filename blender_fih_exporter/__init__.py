@@ -3,10 +3,10 @@
 bl_info = {
     "name": "Flipping Is Hard Map Exporter",
     "author": "FIH Map Editor contributors",
-    "version": (0, 2, 15),
+    "version": (0, 2, 18),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > FIH Map",
-    "description": "Export scene meshes, matching textures and C# as .fihmap.zip",
+    "description": "Export scene meshes, textures, per-object C# and sounds as .fihmap.zip",
     "category": "Import-Export",
 }
 
@@ -301,20 +301,49 @@ def _png_bytes(image, scene):
         os.unlink(path)
 
 
-def _script_bytes(name, scripts_dir):
-    text = bpy.data.texts.get(name + ".cs")
-    path = os.path.join(bpy.path.abspath(scripts_dir), name + ".cs") if scripts_dir else None
-    if text and path and os.path.isfile(path):
-        raise ExportError(f"{name}: C# exists in Blender Text and scripts folder; keep one copy")
-    if text:
-        return text.as_string().encode("utf-8")
-    if path and os.path.isfile(path):
+def _script_bytes(name, selected_path=""):
+    if selected_path:
+        path = bpy.path.abspath(selected_path)
+        if os.path.splitext(path)[1].lower() != ".cs":
+            raise ExportError(f"{name}: selected C# script must be a .cs file")
+        if not os.path.isfile(path):
+            raise ExportError(f"{name}: selected C# script does not exist: {path}")
         with open(path, "rb") as stream:
             return stream.read()
+    text = bpy.data.texts.get(name + ".cs")
+    if text:
+        return text.as_string().encode("utf-8")
     return None
 
 
-def export_scene(scene, filepath, map_name, selected_only=False, scripts_dir="", depsgraph=None,
+def _impact_sound(name, selected_path=""):
+    if not selected_path:
+        return None, None
+    path = bpy.path.abspath(selected_path)
+    extension = os.path.splitext(path)[1].lower()
+    if extension not in (".wav", ".ogg"):
+        raise ExportError(f"{name}: selected impact sound must be WAV or Ogg")
+    if not os.path.isfile(path):
+        raise ExportError(f"{name}: selected impact sound does not exist: {path}")
+    with open(path, "rb") as stream:
+        return stream.read(), extension
+
+
+def _selected_asset_paths(meshes, property_name, label):
+    selected = {}
+    for obj in meshes:
+        chosen = getattr(obj, property_name, "") or obj.get(property_name, "")
+        if not chosen:
+            continue
+        key = asset_name(obj.name).lower()
+        resolved = os.path.normcase(os.path.abspath(bpy.path.abspath(chosen)))
+        if key in selected and selected[key][0] != resolved:
+            raise ExportError(f"{obj.name}: instances of one asset must use the same {label}")
+        selected[key] = (resolved, chosen)
+    return {key: value[1] for key, value in selected.items()}
+
+
+def export_scene(scene, filepath, map_name, selected_only=False, depsgraph=None,
                  repair_open=False, repairs=None):
     depsgraph = depsgraph or bpy.context.evaluated_depsgraph_get()
     markers = {"Spawn": [], "Goal": [], "Checkpoint": []}
@@ -333,6 +362,8 @@ def export_scene(scene, filepath, map_name, selected_only=False, scripts_dir="",
     if len(markers["Spawn"]) > 1 or len(markers["Goal"]) > 1:
         raise ExportError("A map can contain only one Spawn and one Goal marker")
     meshes.sort(key=lambda obj: obj.name.lower())
+    selected_sounds = _selected_asset_paths(meshes, "fih_impact_sound_path", "impact sound")
+    selected_scripts = _selected_asset_paths(meshes, "fih_script_path", "C# script")
     assets = {}
     objects = []
     for obj in meshes:
@@ -352,7 +383,10 @@ def export_scene(scene, filepath, map_name, selected_only=False, scripts_dir="",
             canonical = previous[0]
         else:
             canonical = name
-            assets[key] = (name, {"obj": geometry, "png": texture, "cs": _script_bytes(name, scripts_dir)})
+            sound, sound_ext = _impact_sound(name, selected_sounds.get(key, ""))
+            assets[key] = (name, {"obj": geometry, "png": texture,
+                                  "cs": _script_bytes(name, selected_scripts.get(key, "")),
+                                  "sound": sound, "sound_ext": sound_ext})
         _, position, rotation, scale = _converted_transform(obj)
         # Unity Quaternion.Euler(x,y,z) uses the YXZ rotation order.
         angles = rotation.to_euler("YXZ")
@@ -384,7 +418,7 @@ class FIH_OT_export(Operator):
             if not path.lower().endswith(".fihmap.zip"):
                 path += ".fihmap.zip"
             repairs = []
-            export_scene(scene, path, scene.fih_map_name, scene.fih_selected_only, scene.fih_scripts_dir,
+            export_scene(scene, path, scene.fih_map_name, scene.fih_selected_only,
                          repair_open=scene.fih_repair_open, repairs=repairs)
         except (ExportError, OSError, RuntimeError) as exc:
             self.report({"ERROR"}, str(exc))
@@ -444,7 +478,10 @@ class FIH_PT_export(Panel):
         layout.prop(scene, "fih_selected_only")
         layout.prop(scene, "fih_blank_world")
         layout.prop(scene, "fih_repair_open")
-        layout.prop(scene, "fih_scripts_dir")
+        obj = context.object
+        if obj is not None and obj.type == "MESH":
+            layout.prop(obj, "fih_script_path", text=f"{obj.name} C# Script")
+            layout.prop(obj, "fih_impact_sound_path", text=f"{obj.name} Impact Sound")
         layout.operator(FIH_OT_export.bl_idname, icon="EXPORT")
 
 
@@ -498,7 +535,12 @@ def register():
     bpy.types.Object.fih_checkpoint_radius = FloatProperty(
         name="Checkpoint Radius", default=1.5, min=0.01,
         description="Radius for an Empty checkpoint; object scale also applies")
-    bpy.types.Scene.fih_scripts_dir = StringProperty(name="C# Scripts Folder", subtype="DIR_PATH", default="")
+    bpy.types.Object.fih_script_path = StringProperty(
+        name="C# Script", subtype="FILE_PATH", default="",
+        description="Optional C# file for this asset; its class must match the asset name")
+    bpy.types.Object.fih_impact_sound_path = StringProperty(
+        name="Impact Sound", subtype="FILE_PATH", default="",
+        description="Optional WAV or Ogg for this asset; exported using the asset name")
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_MT_add.append(_draw_add_menu)
@@ -513,11 +555,11 @@ def unregister():
         bpy.types.VIEW3D_MT_add.remove(_draw_add_menu)
     except ValueError:
         pass
-    for key in ("fih_checkpoint_radius",):
+    for key in ("fih_checkpoint_radius", "fih_script_path", "fih_impact_sound_path"):
         if hasattr(bpy.types.Object, key):
             delattr(bpy.types.Object, key)
     for key in ("fih_map_name", "fih_output_path", "fih_selected_only", "fih_repair_open",
-                "fih_scripts_dir", "fih_blank_world"):
+                "fih_blank_world"):
         if hasattr(bpy.types.Scene, key):
             delattr(bpy.types.Scene, key)
     for cls in reversed(CLASSES):
